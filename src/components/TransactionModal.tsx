@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Company, Category, Transaction, TransactionType, OriginType } from '../types.ts';
+import { Company, Category, Transaction, TransactionType, OriginType, BankAccount } from '../types.ts';
 import {
   X,
   PlusCircle,
@@ -10,6 +10,7 @@ import {
   FileText,
   CreditCard,
   Layers,
+  Landmark,
 } from 'lucide-react';
 
 interface TransactionModalProps {
@@ -18,6 +19,7 @@ interface TransactionModalProps {
   onSave: (data: any) => Promise<void>;
   companies: Company[];
   categories: Category[];
+  bankAccounts?: BankAccount[];
   onCreateCategoryQuick: (name: string, type: 'despesa' | 'receita') => Promise<Category>;
   transactionToEdit?: Transaction | null;
 }
@@ -28,6 +30,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
   onSave,
   companies,
   categories,
+  bankAccounts = [],
   onCreateCategoryQuick,
   transactionToEdit,
 }) => {
@@ -37,6 +40,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
   const [originType, setOriginType] = useState<OriginType>('pessoal');
   const [companyId, setCompanyId] = useState<number | string>('');
   const [categoryId, setCategoryId] = useState<number | string>('');
+  const [bankAccountId, setBankAccountId] = useState<number | string>('');
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState('');
   const [dueDate, setDueDate] = useState('');
@@ -62,6 +66,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
       setOriginType(transactionToEdit.originType);
       setCompanyId(transactionToEdit.companyId || '');
       setCategoryId(transactionToEdit.categoryId);
+      setBankAccountId(transactionToEdit.bankAccountId || '');
       setDescription(transactionToEdit.description);
       setAmount(transactionToEdit.amount);
       setDueDate(transactionToEdit.dueDate);
@@ -72,6 +77,8 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
       setType('pagar');
       setOriginType('pessoal');
       setCompanyId(companies.length > 0 ? companies[0].id : '');
+      const defaultAcc = bankAccounts.find((b) => b.isDefault);
+      setBankAccountId(defaultAcc ? defaultAcc.id : '');
       setDescription('');
       setAmount('');
       const today = new Date().toISOString().split('T')[0];
@@ -81,7 +88,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
       setIsRecurring(false);
       setTotalOccurrences(12);
     }
-  }, [transactionToEdit, companies, isOpen]);
+  }, [transactionToEdit, companies, bankAccounts, isOpen]);
 
   // Filter categories by type:
   // "Ao cadastrar uma conta a pagar, somente categorias de despesa deverão ser apresentadas."
@@ -155,6 +162,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
         originType,
         companyId: originType === 'empresa' ? Number(companyId) : null,
         categoryId: Number(categoryId),
+        bankAccountId: bankAccountId ? Number(bankAccountId) : null,
         description: description.trim(),
         amount: cleanAmount.toFixed(2),
         dueDate,
@@ -425,8 +433,28 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
             </div>
           </div>
 
-          {/* Forma de Pagamento & Observações */}
+          {/* Conta Bancária & Forma de Pagamento */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-[#8B98A8] mb-1.5 uppercase tracking-wider flex items-center gap-1.5" htmlFor="tx-bank-account">
+                <Landmark className="w-3.5 h-3.5 text-[#1677FF]" />
+                Conta Bancária
+              </label>
+              <select
+                id="tx-bank-account"
+                value={bankAccountId}
+                onChange={(e) => setBankAccountId(e.target.value)}
+                className="w-full h-11 px-3.5 bg-[#0B0F14] border border-[#2D3A4F] focus:border-[#1677FF] rounded-xl text-sm text-white outline-none"
+              >
+                <option value="">-- Nenhuma conta associada --</option>
+                {bankAccounts.map((acc) => (
+                  <option key={acc.id} value={acc.id}>
+                    {acc.name} (Saldo: R$ {Number(acc.currentBalance).toLocaleString('pt-BR', { minimumFractionDigits: 2 })})
+                  </option>
+                ))}
+              </select>
+            </div>
+
             <div>
               <label className="block text-xs font-semibold text-[#8B98A8] mb-1.5 uppercase tracking-wider" htmlFor="payment-method">
                 Forma de Pagamento
@@ -446,20 +474,21 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                 <option value="Outro">Outro</option>
               </select>
             </div>
+          </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-[#8B98A8] mb-1.5 uppercase tracking-wider" htmlFor="tx-notes">
-                Observações (Opcional)
-              </label>
-              <input
-                id="tx-notes"
-                type="text"
-                placeholder="Ex: Nota fiscal nº 450, contrato..."
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                className="w-full h-11 px-3.5 bg-[#0B0F14] border border-[#2D3A4F] focus:border-[#1677FF] rounded-xl text-sm text-white placeholder-[#4B5565] outline-none"
-              />
-            </div>
+          {/* Observações */}
+          <div>
+            <label className="block text-xs font-semibold text-[#8B98A8] mb-1.5 uppercase tracking-wider" htmlFor="tx-notes">
+              Observações (Opcional)
+            </label>
+            <input
+              id="tx-notes"
+              type="text"
+              placeholder="Ex: Nota fiscal nº 450, contrato..."
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              className="w-full h-11 px-3.5 bg-[#0B0F14] border border-[#2D3A4F] focus:border-[#1677FF] rounded-xl text-sm text-white placeholder-[#4B5565] outline-none"
+            />
           </div>
 
           {/* 31. Recorrência (Only for new transactions) */}

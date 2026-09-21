@@ -1,24 +1,48 @@
-import React, { useState } from 'react';
-import { Transaction } from '../types.ts';
-import { CheckCircle2, Calendar, DollarSign, X, AlertTriangle } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Transaction, BankAccount } from '../types.ts';
+import { CheckCircle2, Calendar, DollarSign, X, AlertTriangle, Landmark, CreditCard } from 'lucide-react';
 
 interface SettleModalProps {
   transaction: Transaction;
   isOpen: boolean;
   onClose: () => void;
-  onConfirm: (settlementDate: string) => Promise<void>;
+  bankAccounts?: BankAccount[];
+  onConfirm: (data: {
+    settlementDate: string;
+    bankAccountId?: number | null;
+    paymentMethod?: string;
+  }) => Promise<void>;
 }
 
 export const SettleModal: React.FC<SettleModalProps> = ({
   transaction,
   isOpen,
   onClose,
+  bankAccounts = [],
   onConfirm,
 }) => {
   const today = new Date().toISOString().split('T')[0];
   const [settlementDate, setSettlementDate] = useState(today);
+  const [bankAccountId, setBankAccountId] = useState<number | string>('');
+  const [paymentMethod, setPaymentMethod] = useState(transaction.paymentMethod || 'PIX');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      setSettlementDate(today);
+      if (transaction.bankAccountId) {
+        setBankAccountId(transaction.bankAccountId);
+      } else if (bankAccounts.length > 0) {
+        const defaultAcc = bankAccounts.find((a) => a.isDefault) || bankAccounts[0];
+        setBankAccountId(defaultAcc.id);
+      } else {
+        setBankAccountId('');
+      }
+      setPaymentMethod(transaction.paymentMethod || 'PIX');
+      setError(null);
+    }
+  }, [isOpen, transaction, bankAccounts, today]);
 
   if (!isOpen) return null;
 
@@ -32,6 +56,8 @@ export const SettleModal: React.FC<SettleModalProps> = ({
   const diffTime = settle.getTime() - due.getTime();
   const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
+  const selectedBank = bankAccounts.find((b) => b.id === Number(bankAccountId));
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!settlementDate) {
@@ -41,7 +67,11 @@ export const SettleModal: React.FC<SettleModalProps> = ({
     setLoading(true);
     setError(null);
     try {
-      await onConfirm(settlementDate);
+      await onConfirm({
+        settlementDate,
+        bankAccountId: bankAccountId ? Number(bankAccountId) : null,
+        paymentMethod: paymentMethod || undefined,
+      });
       onClose();
     } catch (err: any) {
       console.error(err);
@@ -61,9 +91,20 @@ export const SettleModal: React.FC<SettleModalProps> = ({
     return `${d}/${m}/${y}`;
   };
 
+  const paymentMethodsList = [
+    'PIX',
+    'Dinheiro',
+    'Boleto Bancário',
+    'Transferência Bancária (TED/DOC)',
+    'Cartão de Débito',
+    'Cartão de Crédito',
+    'Cheque',
+    'Outro',
+  ];
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs">
-      <div className="w-full max-w-md bg-[#111821] border border-[#1E293B] rounded-2xl p-6 shadow-2xl relative text-white">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs overflow-y-auto">
+      <div className="w-full max-w-md bg-[#111821] border border-[#1E293B] rounded-2xl p-6 shadow-2xl relative text-white my-6">
         <button
           type="button"
           onClick={onClose}
@@ -126,6 +167,60 @@ export const SettleModal: React.FC<SettleModalProps> = ({
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Conta Bancária Selector */}
+          <div>
+            <label className="block text-xs font-semibold text-[#8B98A8] mb-1.5" htmlFor="settle-bank-account">
+              <span className="flex items-center gap-1.5">
+                <Landmark className="w-3.5 h-3.5 text-[#1677FF]" />
+                Conta Bancária ({isExpense ? 'de onde sai o pagamento' : 'onde cai o dinheiro'}):
+              </span>
+            </label>
+            <select
+              id="settle-bank-account"
+              value={bankAccountId}
+              onChange={(e) => setBankAccountId(e.target.value)}
+              className="w-full h-11 px-3 bg-[#0B0F14] border border-[#2D3A4F] focus:border-[#1677FF] rounded-xl text-sm text-white outline-none transition-colors"
+            >
+              <option value="">-- Selecione uma conta bancária --</option>
+              {bankAccounts.map((acc) => (
+                <option key={acc.id} value={acc.id}>
+                  {acc.name} (Saldo: {formatCurrency(acc.currentBalance)})
+                </option>
+              ))}
+            </select>
+            {selectedBank && (
+              <p className="text-[11px] text-[#22C55E] mt-1 flex items-center gap-1">
+                <span>Saldo atual: {formatCurrency(selectedBank.currentBalance)}</span>
+                <span className="text-[#8B98A8]">
+                  → Após baixa: {formatCurrency(Number(selectedBank.currentBalance) + (isExpense ? -Number(transaction.amount) : Number(transaction.amount)))}
+                </span>
+              </p>
+            )}
+          </div>
+
+          {/* Forma de Pagamento */}
+          <div>
+            <label className="block text-xs font-semibold text-[#8B98A8] mb-1.5" htmlFor="settle-payment-method">
+              <span className="flex items-center gap-1.5">
+                <CreditCard className="w-3.5 h-3.5 text-[#1677FF]" />
+                Forma de Pagamento:
+              </span>
+            </label>
+            <select
+              id="settle-payment-method"
+              value={paymentMethod}
+              onChange={(e) => setPaymentMethod(e.target.value)}
+              className="w-full h-11 px-3 bg-[#0B0F14] border border-[#2D3A4F] focus:border-[#1677FF] rounded-xl text-sm text-white outline-none transition-colors"
+            >
+              {paymentMethodsList.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Data Efetiva */}
           <div>
             <label className="block text-xs font-semibold text-[#8B98A8] mb-1.5" htmlFor="settle-date">
               Data Efetiva de {verb}:
@@ -162,7 +257,7 @@ export const SettleModal: React.FC<SettleModalProps> = ({
               </span>
             )}
             <p className="text-[11px] text-[#8B98A8] mt-1">
-              O vencimento original de {formatDate(transaction.dueDate)} será preservado no banco de dados.
+              O vencimento original de {formatDate(transaction.dueDate)} será preservado no histórico do sistema.
             </p>
           </div>
 

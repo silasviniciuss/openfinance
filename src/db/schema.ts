@@ -36,6 +36,37 @@ export const categories = pgTable('categories', {
   createdAt: timestamp('created_at').defaultNow(),
 });
 
+// Bank Accounts (Contas Bancárias)
+export const bankAccounts = pgTable('bank_accounts', {
+  id: serial('id').primaryKey(),
+  userUid: text('user_uid').notNull(),
+  name: text('name').notNull(), // ex: 'Nubank', 'Itaú', 'Caixa'
+  accountType: text('account_type').notNull().default('corrente'), // 'corrente' | 'poupanca' | 'investimento' | 'carteira'
+  initialBalance: numeric('initial_balance', { precision: 15, scale: 2 }).notNull().default('0.00'),
+  currentBalance: numeric('current_balance', { precision: 15, scale: 2 }).notNull().default('0.00'),
+  color: text('color').default('#1677FF'),
+  isDefault: boolean('is_default').default(false).notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+});
+
+// Credit Cards (Cartões de Crédito)
+export const creditCards = pgTable('credit_cards', {
+  id: serial('id').primaryKey(),
+  userUid: text('user_uid').notNull(),
+  name: text('name').notNull(), // ex: 'Nubank Ultravioleta'
+  originType: text('origin_type').notNull().default('pessoal'), // 'pessoal' | 'empresa'
+  companyId: integer('company_id').references(() => companies.id),
+  bankAccountId: integer('bank_account_id').references(() => bankAccounts.id),
+  creditLimit: numeric('credit_limit', { precision: 15, scale: 2 }).notNull().default('0.00'),
+  closingDay: integer('closing_day').notNull(), // Dia de fechamento da fatura (ex: 25)
+  dueDay: integer('due_day').notNull(), // Dia de vencimento da fatura (ex: 5)
+  brand: text('brand').default('Mastercard'), // 'Mastercard', 'Visa', 'Elo', etc.
+  color: text('color').default('#820AD1'),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+});
+
 // Transactions (Contas)
 export const transactions = pgTable('transactions', {
   id: serial('id').primaryKey(),
@@ -43,17 +74,38 @@ export const transactions = pgTable('transactions', {
   originType: text('origin_type').notNull(), // 'pessoal' | 'empresa'
   companyId: integer('company_id').references(() => companies.id),
   categoryId: integer('category_id').references(() => categories.id).notNull(),
+  bankAccountId: integer('bank_account_id').references(() => bankAccounts.id),
+  cardId: integer('card_id').references(() => creditCards.id),
   type: text('type').notNull(), // 'pagar' | 'receber'
   description: text('description').notNull(),
   amount: numeric('amount', { precision: 15, scale: 2 }).notNull(),
   dueDate: text('due_date').notNull(), // 'YYYY-MM-DD'
   settlementDate: text('settlement_date'), // 'YYYY-MM-DD' when paid/received
   status: text('status').notNull().default('pending'), // 'pending' | 'settled' | 'cancelled'
-  paymentMethod: text('payment_method'),
+  paymentMethod: text('payment_method'), // 'PIX', 'Boleto', 'Cartão de Débito', 'Dinheiro', 'Transferência', etc.
   notes: text('notes'),
   recurringId: integer('recurring_id'),
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
+});
+
+// Credit Card Purchases (Compras feitas no Cartão de Crédito)
+export const creditCardPurchases = pgTable('credit_card_purchases', {
+  id: serial('id').primaryKey(),
+  userUid: text('user_uid').notNull(),
+  cardId: integer('card_id').references(() => creditCards.id, { onDelete: 'cascade' }).notNull(),
+  categoryId: integer('category_id').references(() => categories.id).notNull(),
+  companyId: integer('company_id').references(() => companies.id),
+  originType: text('origin_type').notNull().default('pessoal'), // 'pessoal' | 'empresa'
+  description: text('description').notNull(),
+  amount: numeric('amount', { precision: 15, scale: 2 }).notNull(),
+  purchaseDate: text('purchase_date').notNull(), // 'YYYY-MM-DD'
+  installmentNumber: integer('installment_number').notNull().default(1),
+  totalInstallments: integer('total_installments').notNull().default(1),
+  invoiceMonth: text('invoice_month').notNull(), // ex: '2026-10' (ciclo da fatura)
+  invoiceDueDate: text('invoice_due_date').notNull(), // 'YYYY-MM-DD'
+  notes: text('notes'),
+  createdAt: timestamp('created_at').defaultNow(),
 });
 
 // Recurring Transactions
@@ -105,6 +157,35 @@ export const categoriesRelations = relations(categories, ({ many }) => ({
   transactions: many(transactions),
 }));
 
+export const bankAccountsRelations = relations(bankAccounts, ({ many }) => ({
+  transactions: many(transactions),
+  creditCards: many(creditCards),
+}));
+
+export const creditCardsRelations = relations(creditCards, ({ one, many }) => ({
+  bankAccount: one(bankAccounts, {
+    fields: [creditCards.bankAccountId],
+    references: [bankAccounts.id],
+  }),
+  purchases: many(creditCardPurchases),
+  transactions: many(transactions),
+}));
+
+export const creditCardPurchasesRelations = relations(creditCardPurchases, ({ one }) => ({
+  card: one(creditCards, {
+    fields: [creditCardPurchases.cardId],
+    references: [creditCards.id],
+  }),
+  category: one(categories, {
+    fields: [creditCardPurchases.categoryId],
+    references: [categories.id],
+  }),
+  company: one(companies, {
+    fields: [creditCardPurchases.companyId],
+    references: [companies.id],
+  }),
+}));
+
 export const transactionsRelations = relations(transactions, ({ one, many }) => ({
   company: one(companies, {
     fields: [transactions.companyId],
@@ -113,6 +194,14 @@ export const transactionsRelations = relations(transactions, ({ one, many }) => 
   category: one(categories, {
     fields: [transactions.categoryId],
     references: [categories.id],
+  }),
+  bankAccount: one(bankAccounts, {
+    fields: [transactions.bankAccountId],
+    references: [bankAccounts.id],
+  }),
+  creditCard: one(creditCards, {
+    fields: [transactions.cardId],
+    references: [creditCards.id],
   }),
   history: many(transactionHistory),
 }));

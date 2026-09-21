@@ -8,6 +8,7 @@ import { TransactionsView } from './components/TransactionsView.tsx';
 import { CompaniesView } from './components/CompaniesView.tsx';
 import { CategoriesView } from './components/CategoriesView.tsx';
 import { ReportsView } from './components/ReportsView.tsx';
+import { CreditCardsView } from './components/CreditCardsView.tsx';
 import { TransactionModal } from './components/TransactionModal.tsx';
 import { SettleModal } from './components/SettleModal.tsx';
 import { HistoryModal } from './components/HistoryModal.tsx';
@@ -18,6 +19,8 @@ import {
   DashboardOverview,
   AppNotification,
   TransactionHistoryRecord,
+  BankAccount,
+  CreditCard,
 } from './types.ts';
 
 const MainLayout: React.FC = () => {
@@ -30,6 +33,8 @@ const MainLayout: React.FC = () => {
   // Global Data state
   const [companies, setCompanies] = useState<Company[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
+  const [creditCards, setCreditCards] = useState<CreditCard[]>([]);
   const [dashboardOverview, setDashboardOverview] = useState<DashboardOverview | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
@@ -79,6 +84,28 @@ const MainLayout: React.FC = () => {
       setCategories(data);
     } catch (err) {
       console.error('Failed to load categories:', err);
+    }
+  }, [user, fetchApi]);
+
+  // 2b. Fetch Bank Accounts
+  const loadBankAccounts = useCallback(async () => {
+    if (!user) return;
+    try {
+      const data = await fetchApi('/api/bank-accounts');
+      setBankAccounts(data);
+    } catch (err) {
+      console.error('Failed to load bank accounts:', err);
+    }
+  }, [user, fetchApi]);
+
+  // 2c. Fetch Credit Cards
+  const loadCreditCards = useCallback(async () => {
+    if (!user) return;
+    try {
+      const data = await fetchApi('/api/credit-cards');
+      setCreditCards(data);
+    } catch (err) {
+      console.error('Failed to load credit cards:', err);
     }
   }, [user, fetchApi]);
 
@@ -138,11 +165,13 @@ const MainLayout: React.FC = () => {
     if (user) {
       loadCompanies();
       loadCategories();
+      loadBankAccounts();
+      loadCreditCards();
       loadDashboard();
       loadTransactions();
       loadNotifications();
     }
-  }, [user, loadCompanies, loadCategories, loadDashboard, loadTransactions, loadNotifications]);
+  }, [user, loadCompanies, loadCategories, loadBankAccounts, loadCreditCards, loadDashboard, loadTransactions, loadNotifications]);
 
   // Reload dashboard when origin filter changes
   useEffect(() => {
@@ -180,18 +209,28 @@ const MainLayout: React.FC = () => {
       showToast('Conta criada com sucesso!');
     }
     setEditingTx(null);
-    await Promise.all([loadTransactions(), loadDashboard(), loadNotifications()]);
+    await Promise.all([loadTransactions(), loadDashboard(), loadNotifications(), loadBankAccounts()]);
   };
 
-  const handleConfirmSettle = async (settlementDate: string) => {
+  const handleConfirmSettle = async (settlementData: {
+    settlementDate: string;
+    bankAccountId?: number | null;
+    paymentMethod?: string;
+  }) => {
     if (!settlingTx) return;
     await fetchApi(`/api/transactions/${settlingTx.id}/settle`, {
       method: 'POST',
-      body: JSON.stringify({ settlementDate }),
+      body: JSON.stringify(settlementData),
     });
-    showToast(`Baixa realizada com sucesso em ${settlementDate}!`);
+    showToast(`Baixa realizada com sucesso em ${settlementData.settlementDate}!`);
     setSettlingTx(null);
-    await Promise.all([loadTransactions(), loadDashboard(), loadNotifications()]);
+    await Promise.all([
+      loadTransactions(),
+      loadDashboard(),
+      loadNotifications(),
+      loadBankAccounts(),
+      loadCreditCards(),
+    ]);
   };
 
   const handleCancelTransaction = async (tx: Transaction) => {
@@ -310,6 +349,8 @@ const MainLayout: React.FC = () => {
         return 'Minhas Empresas';
       case 'contas':
         return 'Todas as Contas';
+      case 'cartoes':
+        return 'Cartões de Crédito & Bancos';
       case 'categorias':
         return 'Categorias Financeiras';
       case 'relatorios':
@@ -438,6 +479,25 @@ const MainLayout: React.FC = () => {
             />
           )}
 
+          {activeTab === 'cartoes' && (
+            <CreditCardsView
+              creditCards={creditCards}
+              bankAccounts={bankAccounts}
+              categories={categories}
+              companies={companies}
+              onRefresh={async () => {
+                await Promise.all([
+                  loadCreditCards(),
+                  loadBankAccounts(),
+                  loadDashboard(),
+                  loadTransactions(),
+                ]);
+              }}
+              fetchApi={fetchApi}
+              showToast={showToast}
+            />
+          )}
+
           {activeTab === 'relatorios' && (
             <ReportsView
               companies={companies}
@@ -459,6 +519,7 @@ const MainLayout: React.FC = () => {
           onSave={handleSaveTransaction}
           companies={companies}
           categories={categories}
+          bankAccounts={bankAccounts}
           onCreateCategoryQuick={handleQuickCreateCategory}
           transactionToEdit={editingTx}
         />
@@ -469,6 +530,7 @@ const MainLayout: React.FC = () => {
         <SettleModal
           isOpen={isSettleModalOpen}
           transaction={settlingTx}
+          bankAccounts={bankAccounts}
           onClose={() => {
             setIsSettleModalOpen(false);
             setSettlingTx(null);

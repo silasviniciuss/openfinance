@@ -8,9 +8,10 @@ import {
   BarChart3,
   PlusCircle,
   X,
+  CreditCard,
 } from 'lucide-react';
 
-export type NavigationTab = 'dashboard' | 'pessoal' | 'empresas' | 'contas' | 'categorias' | 'relatorios';
+export type NavigationTab = 'dashboard' | 'pessoal' | 'empresas' | 'contas' | 'cartoes' | 'categorias' | 'relatorios';
 
 interface SidebarProps {
   activeTab: NavigationTab;
@@ -32,6 +33,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'pessoal', label: 'Pessoal', icon: <UserCheck className="w-4 h-4" /> },
     { id: 'empresas', label: 'Empresas', icon: <Building2 className="w-4 h-4" /> },
     { id: 'contas', label: 'Contas', icon: <Receipt className="w-4 h-4" /> },
+    { id: 'cartoes', label: 'Cartões & Bancos', icon: <CreditCard className="w-4 h-4" /> },
     { id: 'categorias', label: 'Categorias', icon: <Tags className="w-4 h-4" /> },
     { id: 'relatorios', label: 'Relatórios', icon: <BarChart3 className="w-4 h-4" /> },
   ];

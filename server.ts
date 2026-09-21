@@ -5,6 +5,7 @@ import { requireAuth, AuthRequest, generateToken } from './src/middleware/auth.t
 import { getOrCreateUser } from './src/db/users.ts';
 import {
   seedDefaultCategories,
+  seedDefaultBankAccountsAndCards,
   getCompanies,
   createCompany,
   updateCompany,
@@ -13,6 +14,19 @@ import {
   createCategory,
   updateCategory,
   deleteCategory,
+  getBankAccounts,
+  createBankAccount,
+  updateBankAccount,
+  deleteBankAccount,
+  getCreditCards,
+  createCreditCard,
+  updateCreditCard,
+  deleteCreditCard,
+  getCreditCardPurchases,
+  createCreditCardPurchase,
+  deleteCreditCardPurchase,
+  getCreditCardInvoices,
+  payCreditCardInvoice,
   getTransactions,
   createTransaction,
   updateTransaction,
@@ -55,6 +69,7 @@ async function startServer() {
 
         await getOrCreateUser(uid, email, name);
         await seedDefaultCategories(uid);
+        await seedDefaultBankAccountsAndCards(uid);
 
         const token = generateToken({ uid, email, name, username: 'silas' });
         return res.json({
@@ -107,6 +122,7 @@ async function startServer() {
 
       const dbUser = await getOrCreateUser(uid, email, name);
       await seedDefaultCategories(uid);
+      await seedDefaultBankAccountsAndCards(uid);
 
       res.json({ user: dbUser });
     } catch (error: any) {
@@ -225,6 +241,220 @@ async function startServer() {
     }
   });
 
+  // Bank Accounts API
+  app.get('/api/bank-accounts', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const accounts = await getBankAccounts(req.user!.uid);
+      res.json(accounts);
+    } catch (error: any) {
+      console.error('Error fetching bank accounts:', error);
+      res.status(500).json({ error: error.message || 'Erro ao buscar contas bancárias' });
+    }
+  });
+
+  app.post('/api/bank-accounts', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const { name, accountType, initialBalance, color, isDefault } = req.body;
+      if (!name || !name.trim()) {
+        return res.status(400).json({ error: 'Nome da conta bancária é obrigatório' });
+      }
+      const account = await createBankAccount(req.user!.uid, {
+        name: name.trim(),
+        accountType,
+        initialBalance,
+        color,
+        isDefault,
+      });
+      res.status(201).json(account);
+    } catch (error: any) {
+      console.error('Error creating bank account:', error);
+      res.status(500).json({ error: error.message || 'Erro ao criar conta bancária' });
+    }
+  });
+
+  app.put('/api/bank-accounts/:id', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      const updated = await updateBankAccount(id, req.user!.uid, req.body);
+      res.json(updated);
+    } catch (error: any) {
+      console.error('Error updating bank account:', error);
+      res.status(500).json({ error: error.message || 'Erro ao atualizar conta bancária' });
+    }
+  });
+
+  app.delete('/api/bank-accounts/:id', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      const deleted = await deleteBankAccount(id, req.user!.uid);
+      res.json({ message: 'Conta bancária excluída com sucesso', account: deleted });
+    } catch (error: any) {
+      console.error('Error deleting bank account:', error);
+      res.status(400).json({ error: error.message || 'Erro ao excluir conta bancária' });
+    }
+  });
+
+  // Credit Cards API
+  app.get('/api/credit-cards', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const cards = await getCreditCards(req.user!.uid);
+      res.json(cards);
+    } catch (error: any) {
+      console.error('Error fetching credit cards:', error);
+      res.status(500).json({ error: error.message || 'Erro ao buscar cartões de crédito' });
+    }
+  });
+
+  app.post('/api/credit-cards', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const { name, originType, companyId, bankAccountId, creditLimit, closingDay, dueDay, brand, color } = req.body;
+      if (!name || !name.trim()) {
+        return res.status(400).json({ error: 'Nome do cartão é obrigatório' });
+      }
+      if (!closingDay || !dueDay) {
+        return res.status(400).json({ error: 'Dias de fechamento e vencimento são obrigatórios' });
+      }
+      const card = await createCreditCard(req.user!.uid, {
+        name: name.trim(),
+        originType: originType === 'empresa' ? 'empresa' : 'pessoal',
+        companyId: originType === 'empresa' && companyId ? parseInt(companyId, 10) : null,
+        bankAccountId: bankAccountId ? parseInt(bankAccountId, 10) : null,
+        creditLimit: creditLimit || '0.00',
+        closingDay: parseInt(closingDay, 10),
+        dueDay: parseInt(dueDay, 10),
+        brand,
+        color,
+      });
+      res.status(201).json(card);
+    } catch (error: any) {
+      console.error('Error creating credit card:', error);
+      res.status(500).json({ error: error.message || 'Erro ao criar cartão de crédito' });
+    }
+  });
+
+  app.put('/api/credit-cards/:id', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      const payload = { ...req.body };
+      if (payload.companyId !== undefined) {
+        payload.companyId = payload.companyId ? parseInt(payload.companyId, 10) : null;
+      }
+      if (payload.bankAccountId !== undefined) {
+        payload.bankAccountId = payload.bankAccountId ? parseInt(payload.bankAccountId, 10) : null;
+      }
+      const updated = await updateCreditCard(id, req.user!.uid, payload);
+      res.json(updated);
+    } catch (error: any) {
+      console.error('Error updating credit card:', error);
+      res.status(500).json({ error: error.message || 'Erro ao atualizar cartão de crédito' });
+    }
+  });
+
+  app.delete('/api/credit-cards/:id', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      const deleted = await deleteCreditCard(id, req.user!.uid);
+      res.json({ message: 'Cartão excluído com sucesso', card: deleted });
+    } catch (error: any) {
+      console.error('Error deleting credit card:', error);
+      res.status(500).json({ error: error.message || 'Erro ao excluir cartão de crédito' });
+    }
+  });
+
+  app.get('/api/credit-cards/:id/invoices', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      const invoices = await getCreditCardInvoices(req.user!.uid, id);
+      res.json(invoices);
+    } catch (error: any) {
+      console.error('Error fetching invoices:', error);
+      res.status(500).json({ error: error.message || 'Erro ao buscar faturas' });
+    }
+  });
+
+  app.post('/api/credit-cards/pay-invoice', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const { cardId, invoiceMonth, bankAccountId, settlementDate, paymentMethod } = req.body;
+      if (!cardId || !invoiceMonth || !bankAccountId || !settlementDate) {
+        return res.status(400).json({ error: 'Dados incompletos para pagamento de fatura' });
+      }
+      const paidTx = await payCreditCardInvoice(req.user!.uid, {
+        cardId: parseInt(cardId, 10),
+        invoiceMonth,
+        bankAccountId: parseInt(bankAccountId, 10),
+        settlementDate,
+        paymentMethod,
+      });
+      res.json(paidTx);
+    } catch (error: any) {
+      console.error('Error paying invoice:', error);
+      res.status(500).json({ error: error.message || 'Erro ao pagar fatura' });
+    }
+  });
+
+  // Credit Card Purchases API
+  app.get('/api/credit-card-purchases', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const { cardId, invoiceMonth } = req.query;
+      const purchases = await getCreditCardPurchases(req.user!.uid, {
+        cardId: cardId ? parseInt(cardId as string, 10) : undefined,
+        invoiceMonth: invoiceMonth as string | undefined,
+      });
+      res.json(purchases);
+    } catch (error: any) {
+      console.error('Error fetching credit card purchases:', error);
+      res.status(500).json({ error: error.message || 'Erro ao buscar compras do cartão' });
+    }
+  });
+
+  app.post('/api/credit-card-purchases', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const {
+        cardId,
+        categoryId,
+        companyId,
+        originType,
+        description,
+        amount,
+        purchaseDate,
+        totalInstallments,
+        notes,
+      } = req.body;
+
+      if (!cardId || !categoryId || !description || !amount || !purchaseDate) {
+        return res.status(400).json({ error: 'Campos obrigatórios de compra no cartão ausentes' });
+      }
+
+      const created = await createCreditCardPurchase(req.user!.uid, {
+        cardId: parseInt(cardId, 10),
+        categoryId: parseInt(categoryId, 10),
+        companyId: companyId ? parseInt(companyId, 10) : null,
+        originType: originType || 'pessoal',
+        description: description.trim(),
+        amount,
+        purchaseDate,
+        totalInstallments: totalInstallments ? parseInt(totalInstallments, 10) : 1,
+        notes,
+      });
+
+      res.status(201).json(created);
+    } catch (error: any) {
+      console.error('Error creating credit card purchase:', error);
+      res.status(500).json({ error: error.message || 'Erro ao adicionar compra no cartão' });
+    }
+  });
+
+  app.delete('/api/credit-card-purchases/:id', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      const deleted = await deleteCreditCardPurchase(id, req.user!.uid);
+      res.json({ message: 'Compra excluída com sucesso', purchase: deleted });
+    } catch (error: any) {
+      console.error('Error deleting credit card purchase:', error);
+      res.status(500).json({ error: error.message || 'Erro ao excluir compra no cartão' });
+    }
+  });
+
   // Transactions API
   app.get('/api/transactions', requireAuth, async (req: AuthRequest, res) => {
     try {
@@ -254,6 +484,8 @@ async function startServer() {
         originType,
         companyId,
         categoryId,
+        bankAccountId,
+        cardId,
         type,
         description,
         amount,
@@ -288,6 +520,8 @@ async function startServer() {
         originType,
         companyId: companyId ? parseInt(companyId, 10) : null,
         categoryId: parseInt(categoryId, 10),
+        bankAccountId: bankAccountId ? parseInt(bankAccountId, 10) : null,
+        cardId: cardId ? parseInt(cardId, 10) : null,
         type,
         description: description.trim(),
         amount,
@@ -306,7 +540,13 @@ async function startServer() {
   app.put('/api/transactions/:id', requireAuth, async (req: AuthRequest, res) => {
     try {
       const id = parseInt(req.params.id, 10);
-      const updated = await updateTransaction(id, req.user!.uid, req.body);
+      const { bankAccountId, cardId, ...rest } = req.body;
+      const payload = {
+        ...rest,
+        bankAccountId: bankAccountId !== undefined ? (bankAccountId ? parseInt(bankAccountId, 10) : null) : undefined,
+        cardId: cardId !== undefined ? (cardId ? parseInt(cardId, 10) : null) : undefined,
+      };
+      const updated = await updateTransaction(id, req.user!.uid, payload);
       res.json(updated);
     } catch (error: any) {
       console.error('Error updating transaction:', error);
@@ -318,11 +558,15 @@ async function startServer() {
   app.post('/api/transactions/:id/settle', requireAuth, async (req: AuthRequest, res) => {
     try {
       const id = parseInt(req.params.id, 10);
-      const { settlementDate } = req.body;
+      const { settlementDate, bankAccountId, paymentMethod } = req.body;
       if (!settlementDate) {
         return res.status(400).json({ error: 'Data efetiva da baixa é obrigatória' });
       }
-      const settled = await settleTransaction(id, req.user!.uid, settlementDate);
+      const settled = await settleTransaction(id, req.user!.uid, {
+        settlementDate,
+        bankAccountId: bankAccountId ? parseInt(bankAccountId, 10) : null,
+        paymentMethod,
+      });
       res.json(settled);
     } catch (error: any) {
       console.error('Error settling transaction:', error);
