@@ -1,0 +1,6 @@
+{
+  "name": "Sistema Financeiro",
+  "description": "Sistema completo para controle financeiro pessoal e empresarial de contas a pagar e receber com relatórios e persistência em banco de dados.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
